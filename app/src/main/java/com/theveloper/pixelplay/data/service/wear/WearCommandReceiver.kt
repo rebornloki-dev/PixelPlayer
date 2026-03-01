@@ -61,6 +61,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import timber.log.Timber
@@ -1015,8 +1016,8 @@ class WearCommandReceiver : WearableListenerService() {
         val name: String,
     )
 
-    private fun resolveActiveOutputRoute(audioManager: AudioManager): ActiveOutputRoute {
-        if (isCastingMediaPlayback()) {
+    private suspend fun resolveActiveOutputRoute(audioManager: AudioManager): ActiveOutputRoute {
+        if (withContext(Dispatchers.Main.immediate) { isCastingMediaPlayback() }) {
             return ActiveOutputRoute(
                 type = WearVolumeState.ROUTE_TYPE_CAST,
                 name = "Cast",
