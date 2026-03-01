@@ -2690,7 +2690,7 @@ private fun SettingsSubsectionHeader(title: String) {
 @Composable
 private fun SettingsSubsection(
     title: String,
-    addBottomSpace: Boolean = false,
+    addBottomSpace: Boolean = true,
     content: @Composable () -> Unit
 ) {
     SettingsSubsectionHeader(title)
@@ -2699,11 +2699,11 @@ private fun SettingsSubsection(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(Color.Transparent),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         content()
     }
     if (addBottomSpace) {
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
