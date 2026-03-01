@@ -475,16 +475,23 @@ fun ExperimentalSettingsScreen(
                                                         }
                                                     }
 
+                                                    var localAppearValue by remember(appearThresholdPercent) {
+                                                        mutableStateOf(appearThresholdPercent.toFloat())
+                                                    }
+
                                                     Slider(
-                                                        value = appearThresholdPercent.toFloat(),
-                                                        onValueChange = { settingsViewModel.setFullPlayerAppearThreshold(it.roundToInt()) },
+                                                        value = localAppearValue,
+                                                        onValueChange = { localAppearValue = it },
+                                                        onValueChangeFinished = {
+                                                            settingsViewModel.setFullPlayerAppearThreshold(localAppearValue.roundToInt())
+                                                        },
                                                         valueRange = 0f..100f,
                                                         steps = 99,
                                                         enabled = isAnyDelayEnabled
                                                     )
 
                                                     Text(
-                                                        text = "Content appears at ${appearThresholdPercent}% expansion",
+                                                        text = "Content appears at ${localAppearValue.roundToInt()}% expansion",
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
@@ -547,16 +554,23 @@ fun ExperimentalSettingsScreen(
                                                             }
                                                         }
 
+                                                        var localCloseValue by remember(closeThresholdPercent) {
+                                                            mutableStateOf(closeThresholdPercent.toFloat())
+                                                        }
+
                                                         Slider(
-                                                            value = closeThresholdPercent.toFloat(),
-                                                            onValueChange = { settingsViewModel.setFullPlayerCloseThreshold(it.roundToInt()) },
+                                                            value = localCloseValue,
+                                                            onValueChange = { localCloseValue = it },
+                                                            onValueChangeFinished = {
+                                                                settingsViewModel.setFullPlayerCloseThreshold(localCloseValue.roundToInt())
+                                                            },
                                                             valueRange = 0f..100f,
                                                             steps = 99,
                                                             enabled = isAnyDelayEnabled
                                                         )
 
                                                         Text(
-                                                            text = "Placeholders appear after ${closeThresholdPercent}% collapse",
+                                                            text = "Placeholders appear after ${localCloseValue.roundToInt()}% collapse",
                                                             style = MaterialTheme.typography.bodyMedium,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
