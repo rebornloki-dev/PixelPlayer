@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.json.Json
 import timber.log.Timber
@@ -283,26 +284,28 @@ class WearDataListenerService : WearableListenerService() {
         when (channel.path) {
             WearDataPaths.TRANSFER_CHANNEL -> {
                 Timber.tag(TAG).d("Audio transfer channel opened")
-                scope.launch {
+                runBlocking(Dispatchers.IO) {
+                    val channelClient = Wearable.getChannelClient(this@WearDataListenerService)
                     runCatching {
-                        val channelClient = Wearable.getChannelClient(this@WearDataListenerService)
-                        val inputStream = channelClient.getInputStream(channel).await()
-                        val requestId = readLengthPrefixedString(inputStream, "requestId")
-                        Timber.tag(TAG).d("Audio transfer channel: requestId=$requestId")
-                        transferRepository.onChannelOpened(requestId, inputStream)
+                        channelClient.getInputStream(channel).await().use { inputStream ->
+                            val requestId = readLengthPrefixedString(inputStream, "requestId")
+                            Timber.tag(TAG).d("Audio transfer channel: requestId=$requestId")
+                            transferRepository.onChannelOpened(requestId, inputStream)
+                        }
                     }.onFailure { e ->
                         Timber.tag(TAG).e(e, "Failed to receive audio transfer channel")
                     }
+                    runCatching { channelClient.close(channel).await() }
+                        .onFailure { e -> Timber.tag(TAG).w(e, "Failed to close audio transfer channel") }
                 }
             }
 
             WearDataPaths.TRANSFER_ARTWORK_CHANNEL -> {
                 Timber.tag(TAG).d("Artwork transfer channel opened")
-                scope.launch {
+                runBlocking(Dispatchers.IO) {
+                    val channelClient = Wearable.getChannelClient(this@WearDataListenerService)
                     runCatching {
-                        val channelClient = Wearable.getChannelClient(this@WearDataListenerService)
-                        val inputStream = channelClient.getInputStream(channel).await()
-                        inputStream.use { stream ->
+                        channelClient.getInputStream(channel).await().use { stream ->
                             val requestId = readLengthPrefixedString(stream, "requestId")
                             val songId = readLengthPrefixedString(stream, "songId")
                             val artworkBytes = stream.readBytesSafely()
@@ -322,6 +325,8 @@ class WearDataListenerService : WearableListenerService() {
                     }.onFailure { e ->
                         Timber.tag(TAG).e(e, "Failed to receive artwork transfer channel")
                     }
+                    runCatching { channelClient.close(channel).await() }
+                        .onFailure { e -> Timber.tag(TAG).w(e, "Failed to close artwork transfer channel") }
                 }
             }
 

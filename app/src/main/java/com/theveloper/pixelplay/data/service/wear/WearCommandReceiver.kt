@@ -50,6 +50,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
@@ -117,7 +118,9 @@ class WearCommandReceiver : WearableListenerService() {
             WearDataPaths.PLAYBACK_COMMAND -> handlePlaybackCommand(messageEvent)
             WearDataPaths.VOLUME_COMMAND -> handleVolumeCommand(messageEvent)
             WearDataPaths.BROWSE_REQUEST -> handleBrowseRequest(messageEvent)
-            WearDataPaths.TRANSFER_REQUEST -> handleTransferRequest(messageEvent)
+            WearDataPaths.TRANSFER_REQUEST -> runBlocking(Dispatchers.IO) {
+                handleTransferRequest(messageEvent)
+            }
             WearDataPaths.TRANSFER_CANCEL -> handleTransferCancel(messageEvent)
             else -> Timber.tag(TAG).w("Unknown message path: ${messageEvent.path}")
         }
@@ -953,7 +956,7 @@ class WearCommandReceiver : WearableListenerService() {
 
     // ---- Transfer handling ----
 
-    private fun handleTransferRequest(messageEvent: MessageEvent) {
+    private suspend fun handleTransferRequest(messageEvent: MessageEvent) {
         val requestJson = String(messageEvent.data, Charsets.UTF_8)
         val request = try {
             json.decodeFromString<WearTransferRequest>(requestJson)
@@ -964,105 +967,103 @@ class WearCommandReceiver : WearableListenerService() {
 
         Timber.tag(TAG).d("Transfer request: songId=${request.songId}, requestId=${request.requestId}")
 
-        scope.launch {
-            try {
-                // 1. Find the song
-                val songs = musicRepository.getSongsByIds(listOf(request.songId)).first()
-                val song = songs.firstOrNull()
+        try {
+            // 1. Find the song
+            val songs = musicRepository.getSongsByIds(listOf(request.songId)).first()
+            val song = songs.firstOrNull()
 
-                if (song == null) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Song not found"
-                    )
-                    return@launch
-                }
-                transferStateStore.markRequested(
-                    requestId = request.requestId,
-                    songId = song.id,
-                    songTitle = song.title,
-                )
-
-                // 2. Verify this song is truly available offline on the phone.
-                if (!isSongTransferEligible(song)) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Song must be downloaded locally on phone before saving to watch"
-                    )
-                    return@launch
-                }
-
-                // 3. Open the file and get its size
-                val fileInputStream = openSongFile(song)
-                if (fileInputStream == null) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Cannot read audio file"
-                    )
-                    return@launch
-                }
-
-                val fileSize = getSongFileSize(song)
-                val paletteSeedArgb = resolvePaletteSeedArgb(song)
-                val transferArtworkBytes = resolveTransferArtworkBytes(song)
-
-                // 4. Send metadata to watch
-                val metadata = WearTransferMetadata(
-                    requestId = request.requestId,
-                    songId = song.id,
-                    title = song.title,
-                    artist = song.displayArtist,
-                    album = song.album,
-                    albumId = song.albumId,
-                    duration = song.duration,
-                    mimeType = song.mimeType ?: "audio/mpeg",
-                    fileSize = fileSize,
-                    bitrate = song.bitrate ?: 0,
-                    sampleRate = song.sampleRate ?: 0,
-                    paletteSeedArgb = paletteSeedArgb,
-                )
-                transferStateStore.markMetadata(
-                    requestId = request.requestId,
-                    songId = song.id,
-                    songTitle = song.title,
-                    totalBytes = fileSize,
-                )
-                val metadataBytes = json.encodeToString(metadata).toByteArray(Charsets.UTF_8)
-                val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
-                msgClient.sendMessage(
-                    messageEvent.sourceNodeId,
-                    WearDataPaths.TRANSFER_METADATA,
-                    metadataBytes,
-                ).await()
-
-                Timber.tag(TAG).d("Sent transfer metadata: ${song.title} ($fileSize bytes)")
-
-                // 5. Stream artwork via dedicated channel (optional)
-                if (transferArtworkBytes != null) {
-                    runCatching {
-                        streamArtworkToWatch(
-                            nodeId = messageEvent.sourceNodeId,
-                            requestId = request.requestId,
-                            songId = song.id,
-                            artworkBytes = transferArtworkBytes,
-                        )
-                    }.onFailure { error ->
-                        Timber.tag(TAG).w(error, "Artwork transfer failed for songId=${song.id}")
-                    }
-                }
-
-                // 6. Stream audio via ChannelClient
-                streamFileToWatch(
-                    messageEvent.sourceNodeId, request.requestId, song.id,
-                    fileInputStream, fileSize,
-                )
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Failed to handle transfer request")
-                sendTransferProgress(
+            if (song == null) {
+                sendTransferMetadataError(
                     messageEvent.sourceNodeId, request.requestId, request.songId,
-                    0, 0, WearTransferProgress.STATUS_FAILED, e.message,
+                    "Song not found"
                 )
+                return
             }
+            transferStateStore.markRequested(
+                requestId = request.requestId,
+                songId = song.id,
+                songTitle = song.title,
+            )
+
+            // 2. Verify this song is truly available offline on the phone.
+            if (!isSongTransferEligible(song)) {
+                sendTransferMetadataError(
+                    messageEvent.sourceNodeId, request.requestId, request.songId,
+                    "Song must be downloaded locally on phone before saving to watch"
+                )
+                return
+            }
+
+            // 3. Open the file and get its size
+            val fileInputStream = openSongFile(song)
+            if (fileInputStream == null) {
+                sendTransferMetadataError(
+                    messageEvent.sourceNodeId, request.requestId, request.songId,
+                    "Cannot read audio file"
+                )
+                return
+            }
+
+            val fileSize = getSongFileSize(song)
+            val paletteSeedArgb = resolvePaletteSeedArgb(song)
+            val transferArtworkBytes = resolveTransferArtworkBytes(song)
+
+            // 4. Send metadata to watch
+            val metadata = WearTransferMetadata(
+                requestId = request.requestId,
+                songId = song.id,
+                title = song.title,
+                artist = song.displayArtist,
+                album = song.album,
+                albumId = song.albumId,
+                duration = song.duration,
+                mimeType = song.mimeType ?: "audio/mpeg",
+                fileSize = fileSize,
+                bitrate = song.bitrate ?: 0,
+                sampleRate = song.sampleRate ?: 0,
+                paletteSeedArgb = paletteSeedArgb,
+            )
+            transferStateStore.markMetadata(
+                requestId = request.requestId,
+                songId = song.id,
+                songTitle = song.title,
+                totalBytes = fileSize,
+            )
+            val metadataBytes = json.encodeToString(metadata).toByteArray(Charsets.UTF_8)
+            val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
+            msgClient.sendMessage(
+                messageEvent.sourceNodeId,
+                WearDataPaths.TRANSFER_METADATA,
+                metadataBytes,
+            ).await()
+
+            Timber.tag(TAG).d("Sent transfer metadata: ${song.title} ($fileSize bytes)")
+
+            // 5. Stream artwork via dedicated channel (optional)
+            if (transferArtworkBytes != null) {
+                runCatching {
+                    streamArtworkToWatch(
+                        nodeId = messageEvent.sourceNodeId,
+                        requestId = request.requestId,
+                        songId = song.id,
+                        artworkBytes = transferArtworkBytes,
+                    )
+                }.onFailure { error ->
+                    Timber.tag(TAG).w(error, "Artwork transfer failed for songId=${song.id}")
+                }
+            }
+
+            // 6. Stream audio via ChannelClient
+            streamFileToWatch(
+                messageEvent.sourceNodeId, request.requestId, song.id,
+                fileInputStream, fileSize,
+            )
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to handle transfer request")
+            sendTransferProgress(
+                messageEvent.sourceNodeId, request.requestId, request.songId,
+                0, 0, WearTransferProgress.STATUS_FAILED, e.message,
+            )
         }
     }
 

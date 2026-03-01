@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
@@ -97,6 +98,12 @@ fun DownloadsScreen(
     val transferringStates = activeTransfers.values
         .filter { it.status == WearTransferProgress.STATUS_TRANSFERRING }
         .sortedByDescending { it.bytesTransferred }
+    val failedTransfers = activeTransfers.values
+        .filter {
+            it.status == WearTransferProgress.STATUS_FAILED ||
+                it.status == WearTransferProgress.STATUS_CANCELLED
+        }
+        .sortedBy { it.songTitle.lowercase() }
 
     val background = palette.screenBackgroundColor()
     val surfaceContainer = palette.surfaceContainerColor()
@@ -168,6 +175,60 @@ fun DownloadsScreen(
                                 trackColor = surfaceContainer,
                                 modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
+                            )
+                        },
+                        onClick = {},
+                        colors = ChipDefaults.chipColors(
+                            backgroundColor = elevatedSurfaceContainer,
+                            contentColor = palette.chipContent,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            if (failedTransfers.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Transfer issues",
+                        style = MaterialTheme.typography.caption2,
+                        color = palette.textSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 2.dp),
+                    )
+                }
+
+                items(failedTransfers.size) { index ->
+                    val transfer = failedTransfers[index]
+                    val statusText = when (transfer.status) {
+                        WearTransferProgress.STATUS_CANCELLED -> "Cancelled"
+                        else -> transfer.error?.ifBlank { null } ?: "Transfer failed"
+                    }
+                    Chip(
+                        label = {
+                            Text(
+                                text = transfer.songTitle.ifBlank { "Transfer failed" },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = palette.textPrimary,
+                            )
+                        },
+                        secondaryLabel = {
+                            Text(
+                                text = statusText,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = palette.textError.copy(alpha = 0.90f),
+                            )
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.ErrorOutline,
+                                contentDescription = null,
+                                tint = palette.textError,
+                                modifier = Modifier.size(18.dp),
                             )
                         },
                         onClick = {},
