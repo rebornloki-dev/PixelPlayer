@@ -212,75 +212,70 @@ fun SettingsScreen(
             item {
                 val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                 ExpressiveSettingsGroup {
-                    val mainCategories = SettingsCategory.entries.filter { 
-                        it != SettingsCategory.ABOUT && 
-                        it != SettingsCategory.EQUALIZER &&
-                        it != SettingsCategory.DEVICE_CAPABILITIES
+                    val orderedCategories = SettingsCategory.entries.filter {
+                        it != SettingsCategory.ABOUT
                     }
-                    
-                    mainCategories.forEachIndexed { index, category ->
+                    val totalTiles = orderedCategories.size + 2 // + Accounts + About
+
+                    fun tileShape(index: Int): RoundedCornerShape = when {
+                        totalTiles == 1 -> RoundedCornerShape(24.dp)
+                        index == 0 -> RoundedCornerShape(
+                            topStart = 24.dp,
+                            topEnd = 24.dp,
+                            bottomStart = 4.dp,
+                            bottomEnd = 4.dp
+                        )
+                        index == totalTiles - 1 -> RoundedCornerShape(
+                            topStart = 4.dp,
+                            topEnd = 4.dp,
+                            bottomStart = 24.dp,
+                            bottomEnd = 24.dp
+                        )
+                        else -> RoundedCornerShape(4.dp)
+                    }
+
+                    var tileIndex = 0
+                    orderedCategories.forEach { category ->
                         val colors = getCategoryColors(category, isDark)
-                        
+
                         ExpressiveCategoryItem(
                             category = category,
                             customColors = colors,
                             onClick = {
-                                navController.navigateSafely(Screen.SettingsCategory.createRoute(category.id))
+                                when (category) {
+                                    SettingsCategory.EQUALIZER -> navController.navigateSafely(Screen.Equalizer.route)
+                                    SettingsCategory.DEVICE_CAPABILITIES -> navController.navigateSafely(Screen.DeviceCapabilities.route)
+                                    else -> navController.navigateSafely(Screen.SettingsCategory.createRoute(category.id))
+                                }
                             },
-                            shape = when {
-                                mainCategories.size == 1 -> RoundedCornerShape(24.dp)
-                                index == 0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
-                                index == mainCategories.lastIndex -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
-                                else -> RoundedCornerShape(4.dp)
-                            }
+                            shape = tileShape(tileIndex)
                         )
-                        if (index < mainCategories.lastIndex) {
+                        tileIndex += 1
+                        if (tileIndex < totalTiles) {
                             Spacer(modifier = Modifier.height(2.dp))
                         }
                     }
+
+                    ExpressiveNavigationItem(
+                        title = "Accounts",
+                        subtitle = "Manage Telegram, Google Drive, Netease, and more services",
+                        icon = Icons.Rounded.AccountCircle,
+                        colors = getAccountsColors(isDark),
+                        onClick = { navController.navigateSafely(Screen.Accounts.route) },
+                        shape = tileShape(tileIndex)
+                    )
+                    tileIndex += 1
+                    if (tileIndex < totalTiles) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+
+                    ExpressiveCategoryItem(
+                        category = SettingsCategory.ABOUT,
+                        customColors = getCategoryColors(SettingsCategory.ABOUT, isDark),
+                        onClick = { navController.navigateSafely("about") },
+                        shape = tileShape(tileIndex)
+                    )
                 }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // Equalizer Category (Standalone)
-                ExpressiveCategoryItem(
-                    category = SettingsCategory.EQUALIZER,
-                    customColors = getCategoryColors(SettingsCategory.EQUALIZER, isDark),
-                    onClick = { navController.navigateSafely(Screen.Equalizer.route) }, // Direct navigation
-                    shape = RoundedCornerShape(24.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // Device Capabilities (Standalone)
-                ExpressiveCategoryItem(
-                    category = SettingsCategory.DEVICE_CAPABILITIES,
-                    customColors = getCategoryColors(SettingsCategory.DEVICE_CAPABILITIES, isDark),
-                    onClick = { navController.navigateSafely(Screen.DeviceCapabilities.route) },
-                    shape = RoundedCornerShape(24.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Accounts (Standalone)
-                ExpressiveNavigationItem(
-                    title = "Accounts",
-                    subtitle = "Manage Telegram, Google Drive, Netease, and more services",
-                    icon = Icons.Rounded.AccountCircle,
-                    colors = getAccountsColors(isDark),
-                    onClick = { navController.navigateSafely(Screen.Accounts.route) },
-                    shape = RoundedCornerShape(24.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                // About Category (Standalone)
-                ExpressiveCategoryItem(
-                    category = SettingsCategory.ABOUT,
-                    customColors = getCategoryColors(SettingsCategory.ABOUT, isDark),
-                    onClick = { navController.navigateSafely("about") }, // Direct navigation
-                    shape = RoundedCornerShape(24.dp)
-                )
 
                 // for player active:
                 Spacer(modifier = Modifier.height(32.dp))
