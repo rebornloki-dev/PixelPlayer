@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added Android Auto support through Media3 `MediaLibraryService`.
 - Added Wear OS companion support, including watch transfer and playback controls.
-- Added cloud provider expansions: Telegram playlist management, NetEase sync improvements, QQ Music integration, and Google Drive streaming.
+- Added cloud provider expansions: Telegram playlist management, NetEase sync improvements, QQ Music integration, Subsonic/Navidrome, and Google Drive streaming (WIP).
 - Added a modernized backup/restore system (v3), account management, and persistent queue restoration.
 - Added smarter lyrics workflows (manual fallback search + storage refactor), Recently Played, and new multi-selection flows (songs/albums/playlists).
 - Added home and UI customization features: collage patterns, quick settings tiles, expressive scrollbar refinements, and new widget styles.
