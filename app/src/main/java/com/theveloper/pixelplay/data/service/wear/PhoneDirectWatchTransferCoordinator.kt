@@ -62,6 +62,10 @@ class PhoneDirectWatchTransferCoordinator @Inject constructor(
         requestId: String,
         songId: String,
     ) {
+        transferStateStore.markRequested(
+            requestId = requestId,
+            songId = songId,
+        )
         scope.launch {
             performTransfer(
                 nodeId = nodeId,
@@ -324,13 +328,23 @@ class PhoneDirectWatchTransferCoordinator @Inject constructor(
             return buildWearThemePalette(dynamicDarkColorScheme(application))
         }
 
-        val artUriString = song.albumArtUriString?.takeIf { it.isNotBlank() } ?: return null
-        val paletteStyle = AlbumArtPaletteStyle.fromStorageKey(
-            themePreferencesRepository.albumArtPaletteStyleFlow.first().storageKey
-        )
-        val schemePair = colorSchemeProcessor.getOrGenerateColorScheme(artUriString, paletteStyle)
-            ?: return null
-        return buildWearThemePalette(schemePair.dark)
+        val artUriString = song.albumArtUriString?.takeIf { it.isNotBlank() }
+        if (artUriString != null) {
+            val paletteStyle = AlbumArtPaletteStyle.fromStorageKey(
+                themePreferencesRepository.albumArtPaletteStyleFlow.first().storageKey
+            )
+            val schemePair = colorSchemeProcessor.getOrGenerateColorScheme(artUriString, paletteStyle)
+            if (schemePair != null) {
+                return buildWearThemePalette(schemePair.dark)
+            }
+        }
+
+        val fallbackBitmap = loadSongAlbumArtBitmapForTransfer(song) ?: return null
+        return try {
+            buildWearThemePalette(fallbackBitmap)
+        } finally {
+            fallbackBitmap.recycle()
+        }
     }
 
     private fun loadSongAlbumArtBitmapForTransfer(song: Song): Bitmap? {

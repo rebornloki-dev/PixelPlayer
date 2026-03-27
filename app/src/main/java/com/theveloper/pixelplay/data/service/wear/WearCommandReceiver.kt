@@ -61,6 +61,9 @@ class WearCommandReceiver : WearableListenerService() {
 
     @Inject lateinit var musicRepository: MusicRepository
     @Inject lateinit var playlistPreferencesRepository: PlaylistPreferencesRepository
+    @Inject lateinit var directTransferCoordinator: PhoneDirectWatchTransferCoordinator
+    @Inject lateinit var transferCancellationStore: PhoneWatchTransferCancellationStore
+    @Inject lateinit var transferStateStore: PhoneWatchTransferStateStore
 
     private val json = Json { ignoreUnknownKeys = true }
     private var mediaController: MediaController? = null
@@ -435,82 +438,11 @@ class WearCommandReceiver : WearableListenerService() {
         }
 
         Timber.tag(TAG).d("Transfer request: songId=${request.songId}, requestId=${request.requestId}")
-
-        scope.launch {
-            try {
-                // 1. Find the song
-                val songs = musicRepository.getSongsByIds(listOf(request.songId)).first()
-                val song = songs.firstOrNull()
-
-                if (song == null) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Song not found"
-                    )
-                    return@launch
-                }
-
-                // 2. Verify it's a local file (NOT cloud)
-                val isCloud = song.contentUriString.startsWith("telegram://") ||
-                    song.contentUriString.startsWith("netease://") ||
-                    song.contentUriString.startsWith("gdrive://")
-                if (isCloud) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Cloud songs cannot be transferred"
-                    )
-                    return@launch
-                }
-
-                // 3. Open the file and get its size
-                val fileInputStream = openSongFile(song)
-                if (fileInputStream == null) {
-                    sendTransferMetadataError(
-                        messageEvent.sourceNodeId, request.requestId, request.songId,
-                        "Cannot read audio file"
-                    )
-                    return@launch
-                }
-
-                val fileSize = getSongFileSize(song)
-
-                // 4. Send metadata to watch
-                val metadata = WearTransferMetadata(
-                    requestId = request.requestId,
-                    songId = song.id,
-                    title = song.title,
-                    artist = song.displayArtist,
-                    album = song.album,
-                    albumId = song.albumId,
-                    duration = song.duration,
-                    mimeType = song.mimeType ?: "audio/mpeg",
-                    fileSize = fileSize,
-                    bitrate = song.bitrate ?: 0,
-                    sampleRate = song.sampleRate ?: 0,
-                )
-                val metadataBytes = json.encodeToString(metadata).toByteArray(Charsets.UTF_8)
-                val msgClient = Wearable.getMessageClient(this@WearCommandReceiver)
-                msgClient.sendMessage(
-                    messageEvent.sourceNodeId,
-                    WearDataPaths.TRANSFER_METADATA,
-                    metadataBytes,
-                ).await()
-
-                Timber.tag(TAG).d("Sent transfer metadata: ${song.title} ($fileSize bytes)")
-
-                // 5. Stream audio via ChannelClient
-                streamFileToWatch(
-                    messageEvent.sourceNodeId, request.requestId, song.id,
-                    fileInputStream, fileSize,
-                )
-            } catch (e: Exception) {
-                Timber.tag(TAG).e(e, "Failed to handle transfer request")
-                sendTransferProgress(
-                    messageEvent.sourceNodeId, request.requestId, request.songId,
-                    0, 0, WearTransferProgress.STATUS_FAILED, e.message,
-                )
-            }
-        }
+        directTransferCoordinator.startTransferToWatch(
+            nodeId = messageEvent.sourceNodeId,
+            requestId = request.requestId,
+            songId = request.songId,
+        )
     }
 
     private fun handleTransferCancel(messageEvent: MessageEvent) {
@@ -522,6 +454,8 @@ class WearCommandReceiver : WearableListenerService() {
             return
         }
         cancelledTransfers.add(request.requestId)
+        transferCancellationStore.markCancelled(request.requestId)
+        transferStateStore.markCancelled(request.requestId)
         Timber.tag(TAG).d("Transfer cancelled: requestId=${request.requestId}")
     }
 
