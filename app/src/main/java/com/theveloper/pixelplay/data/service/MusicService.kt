@@ -1041,21 +1041,22 @@ class MusicService : MediaLibraryService() {
         }
 
         val mediaId = mediaItem.mediaId
-        val filePath = mediaItem.mediaMetadata?.extras
-            ?.getString(com.theveloper.pixelplay.utils.MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
-
-        if (filePath.isNullOrBlank()) {
-            Timber.tag(TAG).d("ReplayGain: No file path for track, keeping user-selected volume")
-            if (!engine.isTransitionRunning()) {
-                setPlayerVolume(player, userSelectedVolume)
-            }
-            return
-        }
-
         val useAlbumGain = replayGainUseAlbumGain
         // Read ReplayGain tags on IO thread to avoid blocking main
         replayGainJob = serviceScope.launch {
-            val rgValues = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val filePath = withContext(Dispatchers.IO) {
+                resolveReplayGainFilePath(mediaItem)
+            }
+
+            if (filePath.isNullOrBlank()) {
+                Timber.tag(TAG).d("ReplayGain: No file path for mediaId=%s, keeping user-selected volume", mediaId)
+                if (!engine.isTransitionRunning()) {
+                    setPlayerVolume(player, userSelectedVolume)
+                }
+                return@launch
+            }
+
+            val rgValues = withContext(Dispatchers.IO) {
                 replayGainManager.readReplayGain(filePath)
             }
 
@@ -1086,6 +1087,30 @@ class MusicService : MediaLibraryService() {
                     volume, mediaItem.mediaMetadata?.title)
             }
         }
+    }
+
+    private suspend fun resolveReplayGainFilePath(mediaItem: MediaItem): String? {
+        mediaItem.mediaMetadata.extras
+            ?.getString(MediaItemBuilder.EXTERNAL_EXTRA_FILE_PATH)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        mediaItem.localConfiguration?.uri?.let { uri ->
+            when {
+                uri.scheme.equals("file", ignoreCase = true) -> {
+                    uri.path?.takeIf { it.isNotBlank() }?.let { return it }
+                }
+                uri.scheme.isNullOrBlank() -> {
+                    uri.toString().takeIf { it.startsWith("/") }?.let { return it }
+                }
+            }
+        }
+
+        val mediaId = mediaItem.mediaId.takeIf { it.isNotBlank() } ?: return null
+        return musicRepository.getSong(mediaId)
+            .first()
+            ?.path
+            ?.takeIf { it.isNotBlank() }
     }
 
     private fun setPlayerVolume(player: Player, volume: Float) {

@@ -554,6 +554,102 @@ abstract class PixelPlayDatabase : RoomDatabase() {
             }
         }
 
+        private fun ensureAlbumsTableHasDateAdded(db: SupportSQLiteDatabase) {
+            if (!tableExists(db, "albums")) {
+                recreateAlbumsTable(db)
+                return
+            }
+
+            if ("date_added" in getTableColumns(db, "albums")) {
+                return
+            }
+
+            try {
+                db.execSQL("ALTER TABLE albums ADD COLUMN date_added INTEGER NOT NULL DEFAULT 0")
+            } catch (_: Exception) {
+                // Restored or drifted databases can report a version that does not match
+                // the real on-disk table. Rebuild below if ALTER TABLE does not stick.
+            }
+
+            if ("date_added" !in getTableColumns(db, "albums")) {
+                recreateAlbumsTable(db)
+            }
+        }
+
+        private fun recreateAlbumsTable(db: SupportSQLiteDatabase) {
+            val albumsTableExists = tableExists(db, "albums")
+            val columns = if (albumsTableExists) getTableColumns(db, "albums") else emptySet()
+
+            db.execSQL("DROP TABLE IF EXISTS albums_new")
+            db.execSQL(
+                """
+                    CREATE TABLE albums_new (
+                        id INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        artist_name TEXT NOT NULL,
+                        artist_id INTEGER NOT NULL,
+                        album_art_uri_string TEXT,
+                        song_count INTEGER NOT NULL,
+                        date_added INTEGER NOT NULL DEFAULT 0,
+                        year INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )
+                """.trimIndent()
+            )
+
+            val requiredColumns = setOf(
+                "id",
+                "title",
+                "artist_name",
+                "artist_id",
+                "song_count",
+                "year"
+            )
+
+            if (albumsTableExists && requiredColumns.all(columns::contains)) {
+                val albumArtUriExpr = columnExpr(columns, "album_art_uri_string", "NULL")
+                val dateAddedExpr = columnExpr(columns, "date_added", "0")
+
+                db.execSQL(
+                    """
+                        INSERT OR REPLACE INTO albums_new (
+                            id,
+                            title,
+                            artist_name,
+                            artist_id,
+                            album_art_uri_string,
+                            song_count,
+                            date_added,
+                            year
+                        )
+                        SELECT
+                            id,
+                            title,
+                            artist_name,
+                            artist_id,
+                            $albumArtUriExpr,
+                            song_count,
+                            $dateAddedExpr,
+                            year
+                        FROM albums
+                        WHERE id IS NOT NULL
+                          AND title IS NOT NULL
+                          AND artist_name IS NOT NULL
+                          AND artist_id IS NOT NULL
+                          AND song_count IS NOT NULL
+                          AND year IS NOT NULL
+                    """.trimIndent()
+                )
+            }
+
+            if (albumsTableExists) {
+                db.execSQL("DROP TABLE albums")
+            }
+
+            db.execSQL("ALTER TABLE albums_new RENAME TO albums")
+            createAlbumsEntityIndexes(db)
+        }
+
         private fun recreateSongsTable(db: SupportSQLiteDatabase) {
             val songsTableExists = tableExists(db, "songs")
             val columns = if (songsTableExists) getTableColumns(db, "songs") else emptySet()
@@ -709,6 +805,12 @@ abstract class PixelPlayDatabase : RoomDatabase() {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_songs_content_uri_string ON songs(content_uri_string)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_songs_date_added ON songs(date_added)")
             db.execSQL("CREATE INDEX IF NOT EXISTS index_songs_duration ON songs(duration)")
+        }
+
+        private fun createAlbumsEntityIndexes(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_albums_title ON albums(title)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_albums_artist_id ON albums(artist_id)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_albums_artist_name ON albums(artist_name)")
         }
 
         private fun recreatePlaylistsTable(db: SupportSQLiteDatabase) {
@@ -1140,6 +1242,8 @@ abstract class PixelPlayDatabase : RoomDatabase() {
 
         val MIGRATION_31_32 = object : Migration(31, 32) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                ensureAlbumsTableHasDateAdded(db)
+
                 // 1. Add thread_id column to telegram_songs
                 db.execSQL("ALTER TABLE telegram_songs ADD COLUMN thread_id INTEGER DEFAULT NULL")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_telegram_songs_thread_id ON telegram_songs(thread_id)")

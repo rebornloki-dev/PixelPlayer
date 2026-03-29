@@ -2,6 +2,7 @@ package com.theveloper.pixelplay.data.media
 
 import android.os.ParcelFileDescriptor
 import com.kyant.taglib.TagLib
+import org.jaudiotagger.audio.AudioFileIO
 import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
@@ -57,25 +58,26 @@ class ReplayGainManager @Inject constructor() {
         val file = File(filePath)
         if (!file.exists() || !file.canRead()) return null
 
-        return try {
+        val tagLibValues = try {
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                 val metadata = TagLib.getMetadata(fd.detachFd(), readPictures = false)
-                val propertyMap = metadata?.propertyMap ?: return null
+                val propertyMap = metadata?.propertyMap.orEmpty()
 
-                val trackGain = extractGainValue(propertyMap, TRACK_GAIN_KEYS)
-                val albumGain = extractGainValue(propertyMap, ALBUM_GAIN_KEYS)
-
-                if (trackGain == null && albumGain == null) {
-                    return null
-                }
-
-                ReplayGainValues(trackGainDb = trackGain, albumGainDb = albumGain).also {
+                extractReplayGainValues(propertyMap)?.also {
                     Timber.tag(TAG).d("ReplayGain for ${file.name}: track=${it.trackGainDb}dB, album=${it.albumGainDb}dB")
                 }
             }
         } catch (e: Exception) {
             Timber.tag(TAG).w(e, "Failed to read ReplayGain from: $filePath")
             null
+        }
+
+        if (tagLibValues != null) {
+            return tagLibValues
+        }
+
+        return readReplayGainWithJAudioTagger(file)?.also {
+            Timber.tag(TAG).d("ReplayGain fallback for ${file.name}: track=${it.trackGainDb}dB, album=${it.albumGainDb}dB")
         }
     }
 
@@ -114,10 +116,30 @@ class ReplayGainManager @Inject constructor() {
         }
     }
 
-    private fun extractGainValue(propertyMap: Map<String, Array<String>>, keys: List<String>): Float? {
+    internal fun extractReplayGainValues(propertyMap: Map<String, Array<String>>): ReplayGainValues? {
+        val trackGain = extractGainValue(propertyMap, TRACK_GAIN_KEYS)
+        val albumGain = extractGainValue(propertyMap, ALBUM_GAIN_KEYS)
+
+        return if (trackGain == null && albumGain == null) {
+            null
+        } else {
+            ReplayGainValues(trackGainDb = trackGain, albumGainDb = albumGain)
+        }
+    }
+
+    internal fun extractGainValue(propertyMap: Map<String, Array<String>>, keys: List<String>): Float? {
         for (key in keys) {
             val rawValue = propertyMap[key]?.firstOrNull() ?: continue
-            return parseGainString(rawValue)
+            parseGainString(rawValue)?.let { return it }
+        }
+
+        val normalizedValues = propertyMap.entries.associate { (key, values) ->
+            normalizePropertyKey(key) to values
+        }
+
+        for (key in keys) {
+            val rawValue = normalizedValues[normalizePropertyKey(key)]?.firstOrNull() ?: continue
+            parseGainString(rawValue)?.let { return it }
         }
         return null
     }
@@ -126,10 +148,42 @@ class ReplayGainManager @Inject constructor() {
      * Parses a ReplayGain string like "-6.54 dB" or "+3.21 dB" into a Float.
      * Handles variants with or without "dB" suffix and various whitespace.
      */
-    private fun parseGainString(raw: String): Float? {
+    internal fun parseGainString(raw: String): Float? {
         val cleaned = raw.trim()
             .replace(Regex("[dD][bB]"), "")  // Remove "dB" suffix
             .trim()
         return cleaned.toFloatOrNull()
+    }
+
+    private fun normalizePropertyKey(key: String): String {
+        return key.trim()
+            .uppercase()
+            .replace(Regex("[^A-Z0-9]+"), "_")
+            .trim('_')
+    }
+
+    private fun readReplayGainWithJAudioTagger(file: File): ReplayGainValues? {
+        return try {
+            val tag = AudioFileIO.read(file).tag ?: return null
+            val trackGain = extractGainValue(tag, TRACK_GAIN_KEYS)
+            val albumGain = extractGainValue(tag, ALBUM_GAIN_KEYS)
+
+            if (trackGain == null && albumGain == null) {
+                null
+            } else {
+                ReplayGainValues(trackGainDb = trackGain, albumGainDb = albumGain)
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "JAudioTagger fallback failed for ReplayGain: %s", file.absolutePath)
+            null
+        }
+    }
+
+    private fun extractGainValue(tag: org.jaudiotagger.tag.Tag, keys: List<String>): Float? {
+        for (key in keys) {
+            val rawValue = tag.getFirst(key).takeIf { it.isNotBlank() } ?: continue
+            parseGainString(rawValue)?.let { return it }
+        }
+        return null
     }
 }

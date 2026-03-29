@@ -2669,23 +2669,7 @@ class PlayerViewModel @Inject constructor(
                 val enginePlayer = dualPlayerEngine.masterPlayer
 
                 val mediaItems = songsToPlay.map { song ->
-                    val metadataBuilder = MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.displayArtist)
-                    playlistId?.let {
-                        val extras = Bundle()
-                        extras.putString("playlistId", it)
-                        metadataBuilder.setExtras(extras)
-                    }
-                    song.albumArtUriString?.toUri()?.let { uri ->
-                        metadataBuilder.setArtworkUri(uri)
-                    }
-                    val metadata = metadataBuilder.build()
-                    MediaItem.Builder()
-                        .setMediaId(song.id)
-                        .setUri(MediaItemBuilder.playbackUri(song.contentUriString))
-                        .setMediaMetadata(metadata)
-                        .build()
+                    buildPlaybackMediaItem(song, playlistId = playlistId)
                 }
                 val startIndex = songsToPlay.indexOfFirst { it.id == effectiveStartSong.id }.coerceAtLeast(0)
 
@@ -2731,11 +2715,7 @@ class PlayerViewModel @Inject constructor(
             return
         }
 
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(song.id)
-            .setUri(MediaItemBuilder.playbackUri(song.contentUriString))
-            .setMediaMetadata(MediaItemBuilder.build(song).mediaMetadata)
-            .build()
+        val mediaItem = buildPlaybackMediaItem(song)
         if (controller.currentMediaItem?.mediaId == song.id) {
             if (!controller.isPlaying) controller.play()
         } else {
@@ -2802,41 +2782,20 @@ class PlayerViewModel @Inject constructor(
 
     fun addSongToQueue(song: Song) {
         mediaController?.let { controller ->
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(song.id)
-                .setUri(MediaItemBuilder.playbackUri(song.contentUriString))
-                .setMediaMetadata(MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.displayArtist)
-                    .setArtworkUri(song.albumArtUriString?.toUri())
-                    .build())
-                .build()
-            controller.addMediaItem(mediaItem)
+            controller.addMediaItem(buildPlaybackMediaItem(song))
             // Queue UI is synced via onTimelineChanged listener
         }
     }
 
     fun addSongNextToQueue(song: Song) {
         mediaController?.let { controller ->
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(song.id)
-                .setUri(MediaItemBuilder.playbackUri(song.contentUriString))
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.displayArtist)
-                        .setArtworkUri(song.albumArtUriString?.toUri())
-                        .build()
-                )
-                .build()
-
             val insertionIndex = if (controller.currentMediaItemIndex != C.INDEX_UNSET) {
                 (controller.currentMediaItemIndex + 1).coerceAtMost(controller.mediaItemCount)
             } else {
                 controller.mediaItemCount
             }
 
-            controller.addMediaItem(insertionIndex, mediaItem)
+            controller.addMediaItem(insertionIndex, buildPlaybackMediaItem(song))
             // Queue UI is synced via onTimelineChanged listener
         }
     }
@@ -3889,17 +3848,7 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
              val controller = mediaController ?: return@launch
              
-             val mediaItem = MediaItem.Builder()
-                 .setMediaId(song.id)
-                 .setUri(Uri.parse(song.contentUriString ?: song.path))
-                 .setMediaMetadata(
-                     MediaMetadata.Builder()
-                         .setTitle(song.title)
-                         .setArtist(song.displayArtist)
-                         .setArtworkUri(if (song.albumArtUriString != null) Uri.parse(song.albumArtUriString) else null)
-                         .build()
-                 )
-                 .build()
+             val mediaItem = buildPlaybackMediaItem(song)
                  
              controller.setMediaItem(mediaItem)
              controller.prepare()
@@ -4005,6 +3954,38 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.addCustomGenre(genre, iconResId)
         }
+    }
+}
+
+internal fun buildPlaybackMediaItem(song: Song, playlistId: String? = null): MediaItem {
+    val baseItem = MediaItemBuilder.build(song)
+
+    return baseItem.buildUpon()
+        .setMediaMetadata(buildPlaybackMediaMetadata(baseItem.mediaMetadata, playlistId))
+        .build()
+}
+
+internal fun buildPlaybackMediaMetadata(
+    baseMetadata: MediaMetadata,
+    playlistId: String? = null
+): MediaMetadata {
+    val mergedExtras = mergePlaybackExtras(baseMetadata.extras, playlistId)
+    if (mergedExtras == null) {
+        return baseMetadata
+    }
+
+    return baseMetadata.buildUpon()
+        .setExtras(mergedExtras)
+        .build()
+}
+
+internal fun mergePlaybackExtras(baseExtras: Bundle?, playlistId: String? = null): Bundle? {
+    if (playlistId.isNullOrBlank()) {
+        return baseExtras
+    }
+
+    return Bundle(baseExtras ?: Bundle()).apply {
+        putString("playlistId", playlistId)
     }
 }
 

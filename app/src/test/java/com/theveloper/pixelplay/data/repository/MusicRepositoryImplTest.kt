@@ -179,9 +179,9 @@ class MusicRepositoryImplTest {
             createSongEntity(4L, "S4", "A3", "G", "/allowed/s4.mp3", "/allowed").copy(albumId = 203L)
         )
         val allAlbumEntities = listOf(
-            AlbumEntity(201L, "Album1", "ArtistName1", 101L, "art_uri1", 10, 2023), // El songCount original del DAO
-            AlbumEntity(202L, "Album2", "ArtistName2", 102L, "art_uri2", 5, 2022),
-            AlbumEntity(203L, "Album3", "ArtistName3", 103L, "art_uri3", 3, 2021)
+            AlbumEntity(201L, "Album1", "ArtistName1", 101L, "art_uri1", 10, 0L, 2023), // El songCount original del DAO
+            AlbumEntity(202L, "Album2", "ArtistName2", 102L, "art_uri2", 5, 0L, 2022),
+            AlbumEntity(203L, "Album3", "ArtistName3", 103L, "art_uri3", 3, 0L, 2021)
         )
         val allowedDirs = setOf("/allowed")
 
