@@ -1718,9 +1718,12 @@ class PlayerViewModel @Inject constructor(
 
 
         viewModelScope.launch {
-            userPreferencesRepository.repeatModeFlow.collect { mode ->
-                applyPreferredRepeatMode(mode)
-            }
+            // Repeat preference is only a startup restore value.
+            // Keeping a live collector here creates a feedback path:
+            // player -> DataStore -> collector -> player, which can cause
+            // repeat mode oscillation if a transient player state is persisted.
+            val savedRepeatMode = userPreferencesRepository.repeatModeFlow.first()
+            applyPreferredRepeatMode(savedRepeatMode)
         }
 
         viewModelScope.launch {

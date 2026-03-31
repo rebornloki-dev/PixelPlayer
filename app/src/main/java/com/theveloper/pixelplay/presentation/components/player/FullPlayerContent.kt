@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
@@ -297,18 +298,13 @@ fun FullPlayerContent(
     val playerOnBaseColor = LocalMaterialTheme.current.onPrimaryContainer
     val playerAccentColor = LocalMaterialTheme.current.primary
     val playerOnAccentColor = LocalMaterialTheme.current.onPrimary
-    val playerSecondaryAccentColor = LocalMaterialTheme.current.secondary
-    val playerOnSecondaryAccentColor = LocalMaterialTheme.current.onSecondary
-    val playerOnSecondaryContainerColor = LocalMaterialTheme.current.onSecondaryContainer
-    val playerTertiaryAccentColor = LocalMaterialTheme.current.tertiaryContainer
-    val playerOnTertiaryAccentColor = LocalMaterialTheme.current.onTertiaryContainer
-    val playerSurfaceColor = LocalMaterialTheme.current.surfaceContainer
-    val playerSurfaceHighColor = LocalMaterialTheme.current.surfaceContainerHigh
-    val playerSurfaceHighestColor = LocalMaterialTheme.current.surfaceContainerHighest
-    val playerSubtleTextColor = LocalMaterialTheme.current.onSurfaceVariant
-    val playerOnSurfaceColor = LocalMaterialTheme.current.onSurface
-
-    val controlTintOtherIcons = playerOnSecondaryAccentColor
+    val transportPlayPauseColors = expressivePlayPauseButtonColors(LocalMaterialTheme.current)
+    val transportSkipColors = expressiveSkipButtonColors(LocalMaterialTheme.current)
+    val transportSkipButtonColors = TransportButtonColors(
+        container = playerAccentColor,
+        content = playerOnAccentColor
+    )
+    val progressActiveColor = playerOnBaseColor
 
     val placeholderColor = playerOnBaseColor.copy(alpha = 0.1f)
     val placeholderOnColor = playerOnBaseColor.copy(alpha = 0.2f)
@@ -520,7 +516,7 @@ fun FullPlayerContent(
             expansionFractionProvider = expansionFractionProvider,
             isPlayingProvider = isPlayingProvider,
             currentSheetState = currentSheetState,
-            playerAccentColor = playerAccentColor,
+            progressActiveColor = progressActiveColor,
             playerOnBaseColor = playerOnBaseColor,
             allowRealtimeUpdates = allowRealtimeUpdates,
             isSheetDragGestureActive = isSheetDragGestureActive,
@@ -540,10 +536,8 @@ fun FullPlayerContent(
             onPrevious = onPreviousWithOptimisticCarousel,
             onPlayPause = onPlayPause,
             onNext = onNextWithOptimisticCarousel,
-            playerSecondaryAccentColor = playerSecondaryAccentColor,
-            playerAccentColor = playerAccentColor,
-            playerOnAccentColor = playerOnAccentColor,
-            controlTintOtherIcons = controlTintOtherIcons,
+            transportPlayPauseColors = transportPlayPauseColors,
+            transportSkipColors = transportSkipButtonColors,
             isShuffleEnabledProvider = isShuffleEnabledProvider,
             shuffleTransitionInProgress = shuffleTransitionInProgress,
             repeatModeProvider = repeatModeProvider,
@@ -1118,10 +1112,8 @@ private fun FullPlayerControlsSection(
     onPrevious: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
-    playerSecondaryAccentColor: Color,
-    playerAccentColor: Color,
-    playerOnAccentColor: Color,
-    controlTintOtherIcons: Color,
+    transportPlayPauseColors: TransportButtonColors,
+    transportSkipColors: TransportButtonColors,
     isShuffleEnabledProvider: () -> Boolean,
     shuffleTransitionInProgress: Boolean,
     repeatModeProvider: () -> Int,
@@ -1168,14 +1160,14 @@ private fun FullPlayerControlsSection(
                 height = 80.dp,
                 pressAnimationSpec = stableControlAnimationSpec,
                 releaseDelay = 220L,
-                colorOtherButtons = playerSecondaryAccentColor,
-                colorPlayPause = playerAccentColor,
-                tintPlayPauseIcon = playerOnAccentColor,
-                tintOtherIcons = controlTintOtherIcons,
-                colorPreviousButton = playerOnAccentColor,
-                colorNextButton = playerOnAccentColor,
-                tintPreviousIcon = playerAccentColor,
-                tintNextIcon = playerAccentColor
+                colorOtherButtons = transportSkipColors.container,
+                colorPlayPause = transportPlayPauseColors.container,
+                tintPlayPauseIcon = transportPlayPauseColors.content,
+                tintOtherIcons = transportSkipColors.content,
+                colorPreviousButton = transportSkipColors.container,
+                colorNextButton = transportSkipColors.container,
+                tintPreviousIcon = transportSkipColors.content,
+                tintNextIcon = transportSkipColors.content
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -1212,7 +1204,7 @@ private fun FullPlayerProgressSection(
     expansionFractionProvider: () -> Float,
     isPlayingProvider: () -> Boolean,
     currentSheetState: PlayerSheetState,
-    playerAccentColor: Color,
+    progressActiveColor: Color,
     playerOnBaseColor: Color,
     allowRealtimeUpdates: Boolean,
     isSheetDragGestureActive: Boolean,
@@ -1232,9 +1224,9 @@ private fun FullPlayerProgressSection(
         expansionFractionProvider = expansionFractionProvider,
         isPlayingProvider = isPlayingProvider,
         currentSheetState = currentSheetState,
-        activeTrackColor = playerAccentColor,
+        activeTrackColor = progressActiveColor,
         inactiveTrackColor = playerOnBaseColor.copy(alpha = 0.2f),
-        thumbColor = playerAccentColor,
+        thumbColor = progressActiveColor,
         timeTextColor = playerOnBaseColor,
         allowRealtimeUpdates = allowRealtimeUpdates,
         isSheetDragGestureActive = isSheetDragGestureActive,
@@ -2459,6 +2451,25 @@ private fun ControlsPlaceholder(color: Color, onColor: Color) {
             }
         }
     }
+}
+
+private data class TransportButtonColors(
+    val container: Color,
+    val content: Color
+)
+
+private fun expressivePlayPauseButtonColors(colorScheme: ColorScheme): TransportButtonColors {
+    return TransportButtonColors(
+        container = colorScheme.tertiaryFixedDim,
+        content = colorScheme.onTertiaryFixed
+    )
+}
+
+private fun expressiveSkipButtonColors(colorScheme: ColorScheme): TransportButtonColors {
+    return TransportButtonColors(
+        container = colorScheme.secondaryFixedDim,
+        content = colorScheme.onSecondaryFixed
+    )
 }
 
 @Composable

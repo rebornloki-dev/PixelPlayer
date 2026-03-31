@@ -18,6 +18,7 @@ import io.mockk.*
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -107,6 +108,10 @@ class PlayerViewModelTest {
     private val _searchResultsFlow = MutableStateFlow<ImmutableList<SearchResultItem>>(persistentListOf())
     private val _selectedSearchFilterFlow = MutableStateFlow(SearchFilterType.ALL)
     private val _castSessionFlow = MutableStateFlow<com.google.android.gms.cast.framework.CastSession?>(null)
+    private val _repeatModeFlow = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    private lateinit var mockController: MediaController
+    private val controllerRepeatModeWrites = mutableListOf<Int>()
+    private var controllerRepeatMode = Player.REPEAT_MODE_OFF
 
     @BeforeEach
     fun setUp() {
@@ -135,6 +140,7 @@ class PlayerViewModelTest {
         coEvery { mockUserPreferencesRepository.foldersSortOptionFlow } returns flowOf("FolderNameAZ") // Added missing mock
         coEvery { mockUserPreferencesRepository.persistentShuffleEnabledFlow } returns flowOf(false) // Added missing mock
         coEvery { mockUserPreferencesRepository.isShuffleOnFlow } returns flowOf(false) // Added missing mock
+        every { mockUserPreferencesRepository.repeatModeFlow } returns _repeatModeFlow
         coEvery { mockThemePreferencesRepository.playerThemePreferenceFlow } returns flowOf("Global")
         coEvery { mockAiPreferencesRepository.aiProvider } returns flowOf("GEMINI")
         coEvery { mockAiPreferencesRepository.geminiApiKey } returns flowOf("")
@@ -200,7 +206,12 @@ class PlayerViewModelTest {
         mockMediaControllerFactory = mockk(relaxed = true)
         
         // Mock ListenableFuture for MediaController creation
-        val mockController = mockk<MediaController>(relaxed = true)
+        mockController = mockk(relaxed = true)
+        every { mockController.repeatMode } answers { controllerRepeatMode }
+        every { mockController.repeatMode = any() } answers {
+            controllerRepeatMode = firstArg()
+            controllerRepeatModeWrites += controllerRepeatMode
+        }
         val mockFuture = mockk<ListenableFuture<MediaController>>(relaxed = true)
         every { mockFuture.get() } returns mockController
         every { mockFuture.addListener(any(), any()) } answers {
@@ -364,6 +375,18 @@ class PlayerViewModelTest {
             val uris = playerViewModel.getSongUrisForGenre("Rock").first()
             assertEquals(listOf("rock_cover1.png"), uris)
         }
+    }
+
+    @Test
+    fun `repeat preference changes after startup are not pushed back into controller`() = runTest {
+        advanceUntilIdle()
+        controllerRepeatModeWrites.clear()
+
+        _repeatModeFlow.value = Player.REPEAT_MODE_ONE
+        advanceUntilIdle()
+
+        assertTrue(controllerRepeatModeWrites.isEmpty())
+        assertEquals(Player.REPEAT_MODE_OFF, controllerRepeatMode)
     }
 
     @Nested
