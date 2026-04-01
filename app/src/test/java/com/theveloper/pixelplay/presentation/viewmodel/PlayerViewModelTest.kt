@@ -436,7 +436,7 @@ class PlayerViewModelTest {
                 .build()
             val mockedPlaybackUri = mockk<android.net.Uri>(relaxed = true)
             every { mockedPlaybackUri.scheme } returns "file"
-            every { MediaItemBuilder.playbackUri(any()) } returns mockedPlaybackUri
+            every { MediaItemBuilder.playbackUri(any<Song>()) } returns mockedPlaybackUri
         }
 
         @Test
