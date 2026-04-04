@@ -2287,9 +2287,20 @@ class MusicService : MediaLibraryService() {
 
         // Android 12+ (API 31+): Only request foreground when actively playing.
         // This prevents requesting foreground start when player is idle/ended.
+        //
+        // When the queue is replaced via setMediaItems(), the player transiently enters
+        // STATE_IDLE before prepare()/play() move it back to BUFFERING/READY. Passing
+        // shouldStartInForeground=false during that brief window lets Media3 call
+        // stopForeground(), which on devices with aggressive power management (e.g. Huawei)
+        // can cause the system to restrict or kill the service — manifesting as the device
+        // locking immediately after a song change. To avoid this, allow foreground to
+        // persist while the player is IDLE but still has media items queued (i.e. a queue
+        // replacement is in progress, not a true stop).
+        val isTransientIdle = playbackState == Player.STATE_IDLE
+                && session.player.mediaItemCount > 0
         val shouldStartInForeground = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             startInForegroundRequired && playWhenReady
-                    && playbackState != Player.STATE_IDLE
+                    && (playbackState != Player.STATE_IDLE || isTransientIdle)
                     && playbackState != Player.STATE_ENDED
         } else {
             startInForegroundRequired
