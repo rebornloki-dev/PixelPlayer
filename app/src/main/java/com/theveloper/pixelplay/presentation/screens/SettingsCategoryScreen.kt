@@ -1116,8 +1116,35 @@ fun SettingsCategoryScreen(
                                             onReset = { settingsViewModel.resetOpenAiSystemPrompt() },
                                             title = "System Prompt",
                                             subtitle = "Customize how the AI behaves."
-                                        )
-                                    }
+                            // AI Performance & Context Section (Premium M3E Styling)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Context & Performance",
+                                style = ExpTitleTypography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                            )
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                shape = AbsoluteSmoothCornerShape(24.dp, 80),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                    SwitchSettingItem(
+                                        title = "Safe Token Limit",
+                                        subtitle = "When enabled, strictly limits data sent to AI to stay under 5,000 tokens. Disable for maximum personalization and better discovery results (higher latency).",
+                                        checked = uiState.isSafeTokenLimitEnabled,
+                                        onCheckedChange = { settingsViewModel.setSafeTokenLimitEnabled(it) },
+                                        leadingIcon = { 
+                                            Icon(
+                                                Icons.Rounded.Science, 
+                                                null, 
+                                                tint = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.size(24.dp)
+                                            ) 
+                                        }
+                                    )
                                 }
                             }
                         }
