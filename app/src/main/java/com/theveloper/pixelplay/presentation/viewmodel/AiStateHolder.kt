@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -222,10 +223,17 @@ class AiStateHolder @Inject constructor(
                         notificationManager.hideProgress()
                     }
                 }.onFailure { error ->
+                    Timber.tag("AiPlaylist").e(error, "AI playlist generation failed")
                     _aiStatus.value = null
+                    val detail = extractAiErrorDetail(error)
                     _aiError.value = resolveAiErrorMessage(error)
-                    notificationManager.showCompletion("Generation Failed", "Could not curate your request.")
+                    notificationManager.showCompletion("Generation Failed", detail.take(140))
                 }
+            } catch (e: Exception) {
+                Timber.tag("AiPlaylist").e(e, "AI playlist generation threw unhandled exception")
+                _aiStatus.value = null
+                _aiError.value = resolveAiErrorMessage(e)
+                notificationManager.showCompletion("Generation Failed", extractAiErrorDetail(e).take(140))
             } finally {
                 _isGeneratingAiPlaylist.value = false
                 _aiStatus.value = null
@@ -282,10 +290,15 @@ class AiStateHolder @Inject constructor(
                         toastEmitter?.invoke(context.getString(R.string.ai_no_songs_for_mix))
                     }
                 }.onFailure { error ->
+                    Timber.tag("AiPlaylist").e(error, "Daily Mix refinement failed")
                     val detail = extractAiErrorDetail(error)
                     _aiError.value = resolveAiErrorMessage(error)
                     toastEmitter?.invoke(context.getString(R.string.could_not_update, detail))
                 }
+            } catch (e: Exception) {
+                Timber.tag("AiPlaylist").e(e, "Daily Mix refinement threw unhandled exception")
+                _aiError.value = resolveAiErrorMessage(e)
+                toastEmitter?.invoke(context.getString(R.string.could_not_update, extractAiErrorDetail(e)))
             } finally {
                 _isGeneratingAiPlaylist.value = false
                 _aiStatus.value = null
