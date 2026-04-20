@@ -23,6 +23,7 @@ import com.theveloper.pixelplay.data.preferences.AiPreferencesRepository
 import com.theveloper.pixelplay.data.preferences.AlbumArtQuality
 import com.theveloper.pixelplay.data.preferences.AlbumArtColorAccuracy
 import com.theveloper.pixelplay.data.preferences.AlbumArtPaletteStyle
+import com.theveloper.pixelplay.data.preferences.AppLanguage
 import com.theveloper.pixelplay.data.preferences.CollagePattern
 import com.theveloper.pixelplay.data.preferences.FullPlayerLoadingTweaks
 import com.theveloper.pixelplay.data.preferences.ThemePreferencesRepository
@@ -48,10 +49,12 @@ import com.theveloper.pixelplay.data.ai.provider.AiProvider
 import com.theveloper.pixelplay.data.preferences.LaunchTab
 import com.theveloper.pixelplay.data.model.Song
 import com.theveloper.pixelplay.data.service.player.HiFiCapabilityChecker
+import com.theveloper.pixelplay.utils.AppLocaleManager
 import java.io.File
 
 data class SettingsUiState(
     val isLoadingDirectories: Boolean = false,
+    val appLanguageTag: String = AppLanguage.SYSTEM,
     val appThemeMode: String = AppThemeMode.FOLLOW_SYSTEM,
     val playerThemePreference: String = ThemePreference.ALBUM_ART,
     val albumArtPaletteStyle: AlbumArtPaletteStyle = AlbumArtPaletteStyle.default,
@@ -470,7 +473,12 @@ class SettingsViewModel @Inject constructor(
 
     init {
         // One-time device capability check — result is cached inside HiFiCapabilityChecker
-        _uiState.update { it.copy(hiFiModeDeviceSupported = HiFiCapabilityChecker.isSupported()) }
+        _uiState.update {
+            it.copy(
+                hiFiModeDeviceSupported = HiFiCapabilityChecker.isSupported(),
+                appLanguageTag = AppLocaleManager.currentLanguageTag(context)
+            )
+        }
 
         // Consolidated collectors using combine() to reduce coroutine overhead
         // Instead of 20 separate coroutines, we use 2 combined flows
@@ -772,6 +780,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             themePreferencesRepository.setAppThemeMode(mode)
         }
+    }
+
+    fun setAppLanguage(languageTag: String) {
+        val normalized = AppLanguage.normalize(languageTag)
+        AppLocaleManager.applyLanguage(context, normalized)
+        _uiState.update { it.copy(appLanguageTag = normalized) }
     }
 
     fun setNavBarStyle(style: String) {

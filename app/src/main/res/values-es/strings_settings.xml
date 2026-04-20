@@ -62,6 +62,11 @@
 
     <!-- Appearance -->
     <string name="setcat_global_theme">Tema global</string>
+    <string name="setcat_language_label">Idioma de la app</string>
+    <string name="setcat_language_desc">Elige el idioma usado en toda la interfaz de la aplicación.</string>
+    <string name="setcat_language_system">Predeterminado del sistema</string>
+    <string name="setcat_language_english">Inglés</string>
+    <string name="setcat_language_spanish">Español</string>
     <string name="setcat_app_theme_label">Tema de la app</string>
     <string name="setcat_app_theme_desc">Cambia entre claro, oscuro o seguir el sistema.</string>
     <string name="setcat_theme_light">Tema claro</string>
