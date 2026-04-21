@@ -10,6 +10,7 @@ import android.os.Trace // Import Trace
 import android.provider.MediaStore
 import android.util.Log
 import androidx.hilt.work.HiltWorker
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
@@ -1336,6 +1337,15 @@ constructor(
                         .setInputData(workDataOf(INPUT_SYNC_MODE to SyncMode.INCREMENTAL.name))
                         .build()
 
+        // Full rescans and rebuilds do heavy bulk writes to Room + the album art cache.
+        // Requiring non-critical storage prevents partial/corrupt syncs when the device is
+        // nearly full. Not applied to incremental/startup sync so the library still appears
+        // immediately when the user opens the app.
+        private val heavySyncConstraints: Constraints =
+                Constraints.Builder()
+                        .setRequiresStorageNotLow(true)
+                        .build()
+
         fun fullSyncWork(deepScan: Boolean = false) =
                 OneTimeWorkRequestBuilder<SyncWorker>()
                         .setInputData(
@@ -1344,11 +1354,13 @@ constructor(
                                         INPUT_FORCE_METADATA to deepScan
                                 )
                         )
+                        .setConstraints(heavySyncConstraints)
                         .build()
 
         fun rebuildDatabaseWork() =
                 OneTimeWorkRequestBuilder<SyncWorker>()
                         .setInputData(workDataOf(INPUT_SYNC_MODE to SyncMode.REBUILD.name))
+                        .setConstraints(heavySyncConstraints)
                         .build()
     }
     
