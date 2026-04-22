@@ -894,6 +894,10 @@ class MusicRepositoryImpl @Inject constructor(
         return lyricsRepository.getLyrics(song, sourcePreference, forceRefresh)
     }
 
+    override suspend fun getStoredLyrics(song: Song): Pair<Lyrics, String>? {
+        return lyricsRepository.getStoredLyrics(song)
+    }
+
     /**
      * Obtiene la letra de una canción desde la API de LRCLIB, la persiste en la base de datos
      * y la devuelve como un objeto Lyrics parseado.
