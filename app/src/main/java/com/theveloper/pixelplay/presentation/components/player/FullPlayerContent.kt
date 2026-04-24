@@ -1209,14 +1209,30 @@ private fun FullPlayerProgressSection(
     loadingTweaks: FullPlayerLoadingTweaks
 ) {
     val isMetadataForCurrentSong = playbackMetadataMediaId == song.id
+    val audioMimeType = if (isMetadataForCurrentSong) {
+        playbackMetadataMimeType ?: song.mimeType
+    } else {
+        song.mimeType
+    }
+    val audioBitrate = if (isMetadataForCurrentSong) {
+        playbackMetadataBitrate ?: song.bitrate
+    } else {
+        song.bitrate
+    }
+    val audioSampleRate = if (isMetadataForCurrentSong) {
+        playbackMetadataSampleRate ?: song.sampleRate
+    } else {
+        song.sampleRate
+    }
+
     PlayerProgressBarSection(
         songId = song.id,
         currentPositionProvider = currentPositionProvider,
         totalDurationValue = totalDurationValue,
         songDurationHintMs = song.duration,
-        audioMimeType = if (isMetadataForCurrentSong) playbackMetadataMimeType else null,
-        audioBitrate = if (isMetadataForCurrentSong) playbackMetadataBitrate else null,
-        audioSampleRate = if (isMetadataForCurrentSong) playbackMetadataSampleRate else null,
+        audioMimeType = audioMimeType,
+        audioBitrate = audioBitrate,
+        audioSampleRate = audioSampleRate,
         showAudioFileInfo = showPlayerFileInfo,
         onSeek = onSeek,
         expansionFractionProvider = expansionFractionProvider,
@@ -1644,7 +1660,7 @@ private fun PlayerProgressBarSection(
             null
         }
     }
-    var displayAudioMetaLabel by remember { mutableStateOf<String?>(null) }
+    var displayAudioMetaLabel by remember(songId) { mutableStateOf<String?>(null) }
     LaunchedEffect(songId, audioMetaLabel, showAudioFileInfo) {
         if (!showAudioFileInfo) {
             displayAudioMetaLabel = null
