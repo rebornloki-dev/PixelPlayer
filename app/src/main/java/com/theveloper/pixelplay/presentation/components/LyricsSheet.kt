@@ -1334,6 +1334,7 @@ fun LyricLineRow(
     if (sanitizedWordClusters.isNullOrEmpty()) {
         Column(
             modifier = animatedModifier
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { onClick() }
                 .padding(vertical = verticalPadding, horizontal = 2.dp),
@@ -1391,6 +1392,7 @@ fun LyricLineRow(
 
         Column(
             modifier = animatedModifier
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { onClick() }
                 .padding(vertical = verticalPadding, horizontal = 2.dp),
