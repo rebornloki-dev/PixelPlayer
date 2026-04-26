@@ -100,6 +100,14 @@ class DualPlayerEngine @Inject constructor(
     private var lastPlayWhenReadyAtMs: Long = 0L
     private var lastPlayingAtMs: Long = 0L
 
+    /**
+     * Set by MusicService once ReplayGain for the incoming track is known.
+     * The crossfade loop reads this at the end instead of hard-coding 1f,
+     * so the incoming track reaches its correct RG volume without a jump.
+     * Reset to null after each transition.
+     */
+    var incomingTrackReplayGainVolume: Float? = null
+
     private val focusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
@@ -821,8 +829,9 @@ class DualPlayerEngine @Inject constructor(
             playerB.stop()
             playerB.clearMediaItems()
         }
-        // Ensure master player is full volume if we cancel and reset focus logic
-        playerA.volume = 1f
+        // Ensure master player is at the correct RG volume (or 1f if RG not yet computed)
+        playerA.volume = incomingTrackReplayGainVolume ?: 1f
+        incomingTrackReplayGainVolume = null
         setPauseAtEndOfMediaItems(false)
     }
 
@@ -1026,7 +1035,11 @@ class DualPlayerEngine @Inject constructor(
 
         Timber.tag("TransitionDebug").d("Overlap loop finished.")
         playerB.volume = 0f
-        playerA.volume = 1f
+        // Use the RG-computed volume for the incoming track if available,
+        // otherwise fall back to 1f. This prevents the audible jump when
+        // the crossfade ends and onTransitionFinished() fires.
+        playerA.volume = incomingTrackReplayGainVolume ?: 1f
+        incomingTrackReplayGainVolume = null
 
         // Clean up Old Player (now B)
         playerB.pause()

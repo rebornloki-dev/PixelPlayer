@@ -139,6 +139,9 @@ class MusicService : MediaLibraryService() {
     private var userSelectedVolume = 1f
     private var expectedReplayGainVolume: Float? = null
     private var pendingReplayGainVolume: Float? = null
+    // Last successfully applied RG volume — used to avoid a full-volume spike
+    // during the IO read for the next track (Repeat/Shuffle/Queue changes).
+    private var lastAppliedReplayGainVolume: Float? = null
 
     private var favoriteSongIds = emptySet<String>()
     private var mediaSession: MediaLibraryService.MediaLibrarySession? = null
@@ -1131,6 +1134,13 @@ class MusicService : MediaLibraryService() {
         }
 
         val useAlbumGain = replayGainUseAlbumGain
+
+        // Apply the last known RG volume immediately so there is no full-volume spike
+        // while the IO coroutine reads the tags for the new track.
+        if (!engine.isTransitionRunning()) {
+            lastAppliedReplayGainVolume?.let { setPlayerVolume(engine.masterPlayer, it) }
+        }
+
         // Read ReplayGain tags on IO thread to avoid blocking main
         replayGainJob = serviceScope.launch {
             val rgValues = withContext(Dispatchers.IO) {
@@ -1154,16 +1164,20 @@ class MusicService : MediaLibraryService() {
 
             if (engine.isTransitionRunning()) {
                 // Store for application after transition completes.
-                // If the transition was interrupted (e.g. user skipped during crossfade),
-                // onTransitionFinished() may never fire for this pending value — so we
-                // also apply it immediately to masterPlayer so volume is never lost.
+                // Also pass to engine so the crossfade loop ends at the correct RG
+                // volume instead of hard-coding 1f, preventing the audible jump.
                 pendingReplayGainVolume = volume
+                engine.incomingTrackReplayGainVolume = volume
+                // Apply immediately to masterPlayer so volume is never lost if the
+                // transition is interrupted (e.g. user skips during crossfade).
                 setPlayerVolume(engine.masterPlayer, volume)
                 Timber.tag(TAG).d("ReplayGain: Applied + stored pending volume=%.2f for %s (transition running)",
                     volume, mediaItem.mediaMetadata.title
                 )
             } else {
                 pendingReplayGainVolume = null
+                engine.incomingTrackReplayGainVolume = null
+                lastAppliedReplayGainVolume = volume
                 setPlayerVolume(engine.masterPlayer, volume)
                 Timber.tag(TAG).d("ReplayGain: Applied volume=%.2f for %s",
                     volume, mediaItem.mediaMetadata.title
