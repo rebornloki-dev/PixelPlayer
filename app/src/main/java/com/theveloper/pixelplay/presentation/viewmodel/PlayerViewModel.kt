@@ -680,21 +680,28 @@ class PlayerViewModel @Inject constructor(
     private var fullQueuePlaybackToken: Long = 0L
 
     fun requestLocateCurrentSong() {
-        val currentSongId = stablePlayerState.value.currentSong?.id ?: return
-        val currentIdLong = currentSongId.toLongOrNull() ?: return // Telegram songs with negative IDs are also Longs
-        
+        val currentSong = stablePlayerState.value.currentSong ?: return
+
         viewModelScope.launch {
             try {
-                // Get current sort option and filter from UI state
                 val sortOption = playerUiState.value.currentSongSortOption
                 val storageFilter = playerUiState.value.currentStorageFilter
-                
-                // Fetch sorted IDs from DB
+
                 val sortedIds = musicRepository.getSongIdsSorted(sortOption, storageFilter)
-                
-                // Find index
-                val index = sortedIds.indexOf(currentIdLong)
-                
+
+                // Cloud sources (Telegram, Netease, GDrive, Navidrome, QQMusic, Jellyfin)
+                // sometimes hand the player a Song built directly from their source-specific
+                // repositories — those carry non-numeric ids like "chatId_messageId" or
+                // "netease_42". When the id can't be parsed as Long we fall back to looking
+                // up the unified-table id via content_uri_string, which is stable across
+                // both representations.
+                val unifiedId = currentSong.id.toLongOrNull()
+                    ?: currentSong.contentUriString
+                        .takeIf { it.isNotBlank() }
+                        ?.let { musicRepository.getSongIdByContentUri(it) }
+
+                val index = unifiedId?.let { sortedIds.indexOf(it) } ?: -1
+
                 if (index != -1) {
                     _scrollToIndexEvent.emit(index)
                 } else {

@@ -350,4 +350,11 @@ interface MusicRepository {
         sortOption: com.theveloper.pixelplay.data.model.SortOption,
         storageFilter: com.theveloper.pixelplay.data.model.StorageFilter
     ): List<Long>
+
+    /**
+     * Resolves the unified-table song id for a content URI. Returns null if no
+     * matching row exists. Used by locate-current-song to recover from playback
+     * sessions where `Song.id` is a non-numeric source-specific string.
+     */
+    suspend fun getSongIdByContentUri(contentUri: String): Long?
 }

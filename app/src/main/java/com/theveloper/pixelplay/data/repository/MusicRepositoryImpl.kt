@@ -385,10 +385,11 @@ class MusicRepositoryImpl @Inject constructor(
             telegramDao.insertSongs(entities)
             telegramRepository.warmUpArtworkForSongs(entities)
         }
-        // Trigger sync to update main DB (and remove deleted songs)
-        androidx.work.WorkManager.getInstance(context).enqueue(
-            com.theveloper.pixelplay.data.worker.SyncWorker.incrementalSyncWork()
-        )
+        // Sync into the unified `songs` table is triggered later by saveTelegramChannel().
+        // We deliberately do NOT enqueue here: the SyncWorker gates Telegram processing on
+        // an existing channel row (telegramDao.getAllChannels()), and on first add this
+        // function runs BEFORE the channel entity is persisted. Triggering here would race
+        // and skip the sync, leaving songs invisible until the next app launch.
     }
 
     /**
@@ -1019,6 +1020,16 @@ class MusicRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e("MusicRepo", "Failed to update app playlist for Telegram channel ${channel.chatId}", e)
         }
+
+        // Trigger the unified-library sync now that the channel row exists. SyncWorker's
+        // Telegram phase is gated on telegramDao.getAllChannels() being non-empty, so this
+        // is the earliest moment the sync can succeed. REPLACE collapses concurrent
+        // refresh requests (e.g. forum sync calling saveTelegramChannel twice) into one.
+        androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
+            com.theveloper.pixelplay.data.worker.SyncWorker.WORK_NAME,
+            androidx.work.ExistingWorkPolicy.REPLACE,
+            com.theveloper.pixelplay.data.worker.SyncWorker.incrementalSyncWork()
+        )
     }
 
     override fun getAllTelegramChannels(): Flow<List<TelegramChannelEntity>> {
@@ -1091,10 +1102,9 @@ class MusicRepositoryImpl @Inject constructor(
         // Create/update the per-topic app playlist
         telegramRepository.updateAppPlaylistForTopic(chatId, threadId, topicName, entities)
 
-        // Sync main music DB
-        androidx.work.WorkManager.getInstance(context).enqueue(
-            com.theveloper.pixelplay.data.worker.SyncWorker.incrementalSyncWork()
-        )
+        // Same race as replaceTelegramSongsForChannel — defer the unified-DB sync to
+        // saveTelegramChannel(), which is invoked once at the end of every forum sync
+        // flow after all topics have been persisted.
     }
 
     override suspend fun getSongIdsSorted(
@@ -1122,4 +1132,9 @@ class MusicRepositoryImpl @Inject constructor(
             filterMode = storageFilter.toFilterMode()
         )
     }
+
+    override suspend fun getSongIdByContentUri(contentUri: String): Long? =
+        withContext(Dispatchers.IO) {
+            musicDao.getSongIdByContentUri(contentUri)
+        }
 }

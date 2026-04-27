@@ -353,6 +353,15 @@ interface MusicDao {
     @Query("SELECT " + SONG_LIST_PROJECTION + " FROM songs WHERE id IN (:songIds)")
     suspend fun getSongsByIdsListSimple(songIds: List<Long>): List<SongEntity>
 
+    /**
+     * Resolves the unified-table song id for a given content URI. Used when the
+     * currently-playing song was loaded from a non-unified source (e.g. raw Telegram
+     * repository Songs whose ids are "chatId_messageId" strings) and we need the
+     * matching negative-Long id to position the song inside the library list.
+     */
+    @Query("SELECT id FROM songs WHERE content_uri_string = :contentUri LIMIT 1")
+    suspend fun getSongIdByContentUri(contentUri: String): Long?
+
     @Query(
         "SELECT " + SONG_DETAIL_PROJECTION + """
         FROM songs

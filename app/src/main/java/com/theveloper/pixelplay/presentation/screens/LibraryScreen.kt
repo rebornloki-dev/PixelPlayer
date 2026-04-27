@@ -440,7 +440,14 @@ fun LibraryScreen(
     val scope = rememberCoroutineScope() // Mantener si se usa para acciones de UI
     val syncManager = playerViewModel.syncManager
     var isRefreshing by remember { mutableStateOf(false) }
-    val isSyncing by syncManager.isSyncing.collectAsStateWithLifecycle(initialValue = false)
+    // The pull-to-refresh spinner reflects ONLY the early "library changes" phases
+    // (MediaStore deletion check, fetch, processing). Background maintenance —
+    // LRC scan, art-cache cleanup, cloud-source sync — is reported separately by
+    // the slim linear indicator under LibraryActionRow so the gesture feels snappy.
+    val isFetchingChanges by syncManager.isFetchingChanges
+        .collectAsStateWithLifecycle(initialValue = false)
+    val isPerformingMaintenance by syncManager.isPerformingMaintenance
+        .collectAsStateWithLifecycle(initialValue = false)
     // NOTE: syncProgress is NOT collected here. It is collected inside LibrarySyncOverlay
     // to avoid triggering recomposition of the entire LibraryScreen on every progress tick.
 
@@ -592,8 +599,9 @@ fun LibraryScreen(
             showSongInfoBottomSheet = true
         }
     }
-    // Pull-to-refresh uses incremental sync for speed
-    // We enforce a minimum duration of 3.5s for the animation as requested by the user.
+    // Pull-to-refresh uses incremental sync for speed.
+    // The spinner only stays visible while the worker is in a "changes" phase, with a
+    // short tactile minimum so a no-op refresh still confirms the gesture.
     var isMinDelayActive by remember { mutableStateOf(false) }
 
     val onRefresh: () -> Unit = remember {
@@ -602,26 +610,23 @@ fun LibraryScreen(
             isRefreshing = true
             syncManager.incrementalSync()
             scope.launch {
-                kotlinx.coroutines.delay(3500)
+                kotlinx.coroutines.delay(900)
                 isMinDelayActive = false
-                // If sync finished during the delay, the LaunchedEffect blocked the update.
-                // We must manually check and turn it off if needed.
-                val currentlySyncing = syncManager.isSyncing.first()
-                if (!currentlySyncing) {
+                // If the changes phase already finished while the tactile minimum was
+                // still active, hide the spinner now.
+                val stillFetching = syncManager.isFetchingChanges.first()
+                if (!stillFetching) {
                     isRefreshing = false
                 }
             }
         }
     }
 
-    LaunchedEffect(isSyncing) {
-        if (isSyncing) {
+    LaunchedEffect(isFetchingChanges) {
+        if (isFetchingChanges) {
             isRefreshing = true
-        } else {
-            // Only hide refresh indicator if the minimum delay has passed
-            if (!isMinDelayActive) {
-                isRefreshing = false
-            }
+        } else if (!isMinDelayActive) {
+            isRefreshing = false
         }
     }
 
@@ -1232,6 +1237,15 @@ fun LibraryScreen(
                             }
                         }
 
+                        // Slim background-maintenance indicator. Reports LRC scanning,
+                        // album-art cache cleanup, and cloud-source syncing. AnimatedVisibility
+                        // collapses the row to zero height when nothing is running so the
+                        // tab content does not shift between sync cycles.
+                        LibraryMaintenanceIndicator(
+                            visible = isPerformingMaintenance && !isFetchingChanges,
+                            syncManager = syncManager
+                        )
+
                         if (isSortSheetVisible && sanitizedSortOptions.isNotEmpty()) {
                             val currentSelectionKey = currentSelectedSortOption?.storageKey
                             val selectedOptionForSheet = sanitizedSortOptions.firstOrNull { option ->
@@ -1640,14 +1654,17 @@ fun LibraryScreen(
                         }
                     }
                 } else if (
-                    playerUiState.isSyncingLibrary ||
+                    isLibraryContentEmpty &&
                     (
-                            (playerUiState.isLoadingInitialSongs || playerUiState.isLoadingLibraryCategories) &&
-                                    isLibraryContentEmpty
+                            playerUiState.isSyncingLibrary ||
+                                    playerUiState.isLoadingInitialSongs ||
+                                    playerUiState.isLoadingLibraryCategories
                             )
                 ) {
-                    // P1-1: LibrarySyncOverlay reads syncProgress internally so that sync progress
-                    // ticks don't trigger recomposition of the entire LibraryScreen.
+                    // The full-screen overlay is reserved for first-launch / empty library
+                    // states. Once the user has content, in-place indicators (pull-to-refresh
+                    // spinner + LibraryMaintenanceIndicator) handle sync feedback so the
+                    // list stays visible.
                     LibrarySyncOverlay(syncManager = syncManager)
                 }
             }
@@ -2089,6 +2106,74 @@ private fun CompactLibraryPagerIndicator(
                     .width(width)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+            )
+        }
+    }
+}
+
+/**
+ * Slim, non-intrusive indicator for sync work that runs AFTER the user-relevant
+ * "library changes" phase has finished — LRC scanning, album-art cache cleanup, and
+ * cloud-source synchronization. Sits just below [LibraryActionRow] and collapses to
+ * zero height when not active so it never reflows the tab content.
+ *
+ * Distinct from the pull-to-refresh spinner (which signals "your additions/deletions
+ * are landing") and from [LibrarySyncOverlay] (full-screen, only used for the initial
+ * empty-library load). The two indicators are designed not to fire at the same time:
+ * the worker advances sequentially through change phases first, then maintenance
+ * phases, and the parent screen also gates this one on `!isFetchingChanges`.
+ */
+@Composable
+private fun LibraryMaintenanceIndicator(
+    visible: Boolean,
+    syncManager: com.theveloper.pixelplay.data.worker.SyncManager
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = androidx.compose.animation.expandVertically(
+            expandFrom = Alignment.Top,
+            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+        ) + androidx.compose.animation.fadeIn(animationSpec = tween(180)),
+        exit = androidx.compose.animation.shrinkVertically(
+            shrinkTowards = Alignment.Top,
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+        ) + androidx.compose.animation.fadeOut(animationSpec = tween(160))
+    ) {
+        // Collected inside this subtree so progress ticks don't recompose the
+        // parent screen — same pattern as LibrarySyncOverlay.
+        val syncProgress by syncManager.syncProgress
+            .collectAsStateWithLifecycle(initialValue = SyncProgress())
+
+        val phaseLabel = when (syncProgress.phase) {
+            SyncProgress.SyncPhase.SCANNING_LRC ->
+                stringResource(R.string.library_background_sync_lyrics)
+            SyncProgress.SyncPhase.CLEANING_CACHE ->
+                stringResource(R.string.library_background_sync_cache)
+            SyncProgress.SyncPhase.SYNCING_CLOUD ->
+                stringResource(R.string.library_background_sync_cloud)
+            else ->
+                stringResource(R.string.library_background_sync)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = phaseLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LinearWavyProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
             )
         }
     }
