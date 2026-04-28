@@ -2994,13 +2994,7 @@ fun LibraryFoldersTab(
                                             if (isSelectionMode) {
                                                 onSongSelectionToggle(song)
                                             } else {
-                                                val songIndex = songsToShow.indexOf(song)
-                                                if (songIndex != -1) {
-                                                    val songsToPlay =
-                                                        songsToShow.subList(songIndex, songsToShow.size)
-                                                            .toList()
-                                                    onPlaySong(song, songsToPlay)
-                                                }
+                                                onPlaySong(song, songsToShow)
                                             }
                                         }
                                     )
