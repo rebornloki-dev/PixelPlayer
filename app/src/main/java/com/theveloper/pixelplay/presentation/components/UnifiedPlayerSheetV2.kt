@@ -516,8 +516,15 @@ fun UnifiedPlayerSheetV2(
     // miniReadyAlpha fades the shadow in during the initial song-appear animation.
     val visualCardShadowElevation by remember(showQueueSheet, miniReadyAlpha) {
         derivedStateOf {
-            if (showQueueSheet || playerContentExpansionFraction.value > 0.18f) 0.dp
-            else (3f * miniReadyAlpha).dp
+            if (
+                showQueueSheet ||
+                playerContentExpansionFraction.isRunning ||
+                playerContentExpansionFraction.value > 0.18f
+            ) {
+                0.dp
+            } else {
+                (3f * miniReadyAlpha).dp
+            }
         }
     }
 
